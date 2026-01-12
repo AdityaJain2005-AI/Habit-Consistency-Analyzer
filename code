@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Habit Consistency Analyzer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: #f4f6fb;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .app {
+      width: 95%;
+      max-width: 460px;
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.1);
+    }
+    h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      opacity: 0.6;
+      margin-bottom: 16px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+    }
+
+    button {
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 500;
+      color: #fff;
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .done { background: #22c55e; }
+    .missed { background: #ef4444; }
+    .add { background: #6366f1; }
+    .reset { background: #111827; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .stat {
+      background: #f9fafb;
+      padding: 12px;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .stat small {
+      display: block;
+      font-size: 12px;
+      opacity: 0.6;
+    }
+  </style>
+</head>
+
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+function App() {
+  const [habits, setHabits] = useState(() => {
+    return JSON.parse(localStorage.getItem("habits")) || {};
+  });
+
+  const [activeHabit, setActiveHabit] = useState(
+    localStorage.getItem("activeHabit") || ""
+  );
+
+  const [newHabit, setNewHabit] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem("habits", JSON.stringify(habits));
+    localStorage.setItem("activeHabit", activeHabit);
+  }, [habits, activeHabit]);
+
+  function todayKey(offset = 0) {
+    const d = new Date();
+    d.setDate(d.getDate() - offset);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function addHabit() {
+    if (!newHabit || habits[newHabit]) return;
+    setHabits({ ...habits, [newHabit]: {} });
+    setActiveHabit(newHabit);
+    setNewHabit("");
+  }
+
+  function setStatus(value) {
+    if (!activeHabit) return;
+    setHabits({
+      ...habits,
+      [activeHabit]: {
+        ...habits[activeHabit],
+        [todayKey()]: value
+      }
+    });
+  }
+
+  function calculateStats(logs) {
+    const dates = Object.keys(logs).sort();
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let temp = 0;
+    let completed = 0;
+
+    for (let d of dates) {
+      if (logs[d]) {
+        completed++;
+        temp++;
+        longestStreak = Math.max(longestStreak, temp);
+      } else {
+        temp = 0;
+      }
+    }
+
+    for (let i = dates.length - 1; i >= 0; i--) {
+      if (logs[dates[i]]) currentStreak++;
+      else break;
+    }
+
+    const consistency =
+      dates.length === 0 ? 0 : Math.round((completed / dates.length) * 100);
+
+    return { currentStreak, longestStreak, consistency };
+  }
+
+  function rolling7DayConsistency(logs) {
+    let done = 0;
+    let total = 0;
+
+    for (let i = 0; i < 7; i++) {
+      const day = todayKey(i);
+      if (logs.hasOwnProperty(day)) {
+        total++;
+        if (logs[day]) done++;
+      }
+    }
+
+    return total === 0 ? 0 : Math.round((done / total) * 100);
+  }
+
+  const logs = habits[activeHabit] || {};
+  const { currentStreak, longestStreak, consistency } = calculateStats(logs);
+  const rolling7 = rolling7DayConsistency(logs);
+
+  return (
+    <div className="app">
+      <h2>Habit Consistency Analyzer</h2>
+      <div className="subtitle">
+        Multi-habit tracking with short-term discipline analysis
+      </div>
+
+      <select
+        value={activeHabit}
+        onChange={(e) => setActiveHabit(e.target.value)}
+      >
+        <option value="">Select habit</option>
+        {Object.keys(habits).map(h => (
+          <option key={h} value={h}>{h}</option>
+        ))}
+      </select>
+
+      <div className="row">
+        <input
+          placeholder="New habit name"
+          value={newHabit}
+          onChange={(e) => setNewHabit(e.target.value)}
+        />
+        <button className="add" onClick={addHabit}>Add</button>
+      </div>
+
+      {activeHabit && (
+        <>
+          <div className="row">
+            <button className="done" onClick={() => setStatus(true)}>Done Today</button>
+            <button className="missed" onClick={() => setStatus(false)}>Missed</button>
+          </div>
+
+          <div className="stats">
+            <Stat label="Current Streak" value={`${currentStreak}`} />
+            <Stat label="Longest Streak" value={`${longestStreak}`} />
+            <Stat label="Lifetime %" value={`${consistency}%`} />
+            <Stat label="Last 7 Days" value={`${rolling7}%`} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div className="stat">
+      <small>{label}</small>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
